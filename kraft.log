@@ -1,0 +1,6 @@
+{"level":"info","ts":1610748807.694687,"caller":"log/log.go:41","msg":"application starting with default log configuration"}
+{"level":"info","ts":1610748823.0845404,"caller":"log/log.go:41","msg":"application starting with default log configuration"}
+{"level":"info","ts":1610748981.2240818,"caller":"log/log.go:41","msg":"application starting with default log configuration"}
+{"level":"info","ts":1610749004.8072736,"caller":"log/log.go:41","msg":"application starting with default log configuration"}
+{"level":"info","ts":1610749014.0697157,"caller":"log/log.go:41","msg":"application starting with default log configuration"}
+{"level":"info","ts":1610749866.1015575,"caller":"log/log.go:41","msg":"application starting with default log configuration"}
