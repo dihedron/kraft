@@ -9,36 +9,31 @@ package store
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/dihedron/kraft/fsm"
+	"github.com/dihedron/kraft/log"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"go.uber.org/zap"
 )
 
 type Store struct {
 	RaftDir  string
 	RaftBind string
 
-	raft *raft.Raft // The consensus mechanism
-	fsm  *fsm
-
-	logger *log.Logger
+	raft *raft.Raft // The Raft consensus mechanism
+	fsm  *fsm.FSM   // the Finite State Machine (FSM)
 }
 
 var ErrNotLeader error = errors.New("not leader")
 
-func NewStore(raftdir, raftbind string) (*Store, error) {
-	fsm, err := NewFSM(raftdir)
-	if err != nil {
-		return nil, err
-	}
+func New(raftdir, raftbind string) (*Store, error) {
 	return &Store{
-		logger:   log.New(os.Stderr, "[store] ", log.LstdFlags),
-		fsm:      fsm,
+		fsm:      fsm.New(),
 		RaftDir:  raftdir,
 		RaftBind: raftbind,
 	}, nil
@@ -49,12 +44,13 @@ func (s *Store) Open(bootstrap bool, localID string) error {
 	config.LocalID = raft.ServerID(localID)
 	config.SnapshotThreshold = 1024
 
-	addr, err := net.ResolveTCPAddr("tcp", s.RaftBind)
+	address, err := net.ResolveTCPAddr("tcp", s.RaftBind)
 	if err != nil {
+		log.L.Error("error resolving TCP address", zap.Error(err))
 		return err
 	}
 
-	transport, err := raft.NewTCPTransport(s.RaftBind, addr, 3, 10*time.Second, os.Stderr)
+	transport, err := raft.NewTCPTransport(s.RaftBind, address, 3, 10*time.Second, os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -91,7 +87,7 @@ func (s *Store) Open(bootstrap bool, localID string) error {
 	return nil
 }
 
-func (s *Store) Get(key string) (string, error) {
+func (s *Store) Get(key string) (int, error) {
 	return s.fsm.Get(key)
 }
 
@@ -130,18 +126,18 @@ func (s *Store) Delete(key string) error {
 }
 
 func (s *Store) Join(nodeID, addr string) error {
-	s.logger.Printf("received join request for remote node %s, addr %s", nodeID, addr)
+	log.L.Info("received join request for remote node", zap.String("node id", nodeID), zap.String("address", addr))
 
 	cf := s.raft.GetConfiguration()
 
 	if err := cf.Error(); err != nil {
-		s.logger.Printf("failed to get raft configuration")
+		log.L.Info("failed to get raft configuration")
 		return err
 	}
 
 	for _, server := range cf.Configuration().Servers {
 		if server.ID == raft.ServerID(nodeID) {
-			s.logger.Printf("node %s already joined raft cluster", nodeID)
+			log.L.Info("node %s already joined raft cluster", nodeID)
 			return nil
 		}
 	}
@@ -151,18 +147,18 @@ func (s *Store) Join(nodeID, addr string) error {
 		return err
 	}
 
-	s.logger.Printf("node %s at %s joined successfully", nodeID, addr)
+	log.L.Info("node %s at %s joined successfully", nodeID, addr)
 
 	return nil
 }
 
 func (s *Store) Leave(nodeID string) error {
-	s.logger.Printf("received leave request for remote node %s", nodeID)
+	log.L.Info("received leave request for remote node %s", nodeID)
 
 	cf := s.raft.GetConfiguration()
 
 	if err := cf.Error(); err != nil {
-		s.logger.Printf("failed to get raft configuration")
+		log.L.Info("failed to get raft configuration")
 		return err
 	}
 
@@ -170,22 +166,22 @@ func (s *Store) Leave(nodeID string) error {
 		if server.ID == raft.ServerID(nodeID) {
 			f := s.raft.RemoveServer(server.ID, 0, 0)
 			if err := f.Error(); err != nil {
-				s.logger.Printf("failed to remove server %s", nodeID)
+				log.L.Info("failed to remove server %s", nodeID)
 				return err
 			}
 
-			s.logger.Printf("node %s leaved successfully", nodeID)
+			log.L.Info("node %s leaved successfully", nodeID)
 			return nil
 		}
 	}
 
-	s.logger.Printf("node %s not exists in raft group", nodeID)
+	log.L.Info("node %s not exists in raft group", nodeID)
 
 	return nil
 }
 
 func (s *Store) Snapshot() error {
-	s.logger.Printf("doing snapshot mannually")
+	log.L.Info("doing snapshot mannually")
 	f := s.raft.Snapshot()
 	return f.Error()
 }
